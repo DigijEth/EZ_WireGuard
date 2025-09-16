@@ -1,4 +1,32 @@
-#!/usr/bin/env python3
+def log(self, message):
+    """Add message to log display and terminal output"""
+    # Check if log_text exists and write to it
+    if hasattr(self, 'log_text'):
+        self.log_text.insert(tk.END, f"{message}\n")
+        self.log_text.see(tk.END)
+
+    # Also write to terminal output if it exists
+    if hasattr(self, 'terminal_output'):
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.terminal_output.insert(tk.END, f"[{timestamp}] {message}\n")
+        self.terminal_output.see(tk.END)
+        self.root.update()
+
+    print(f"[LOG] {message}")  # Also print to console for debugging
+
+
+def terminal_write(self, message, color="green"):
+    """Write directly to terminal output with optional color"""
+    if hasattr(self, 'terminal_output'):
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        # Configure color tag
+        self.terminal_output.tag_config(color, foreground=color)
+        start = self.terminal_output.index(tk.END)
+        self.terminal_output.insert(tk.END, f"[{timestamp}] {message}\n", color)
+        self.terminal_output.see(tk.END)
+        self.root.update()  # !/usr/bin/env python3
+
+
 """
 WireGuard Server Setup GUI for Windows 11
 Requires WireGuard to be installed from https://www.wireguard.com/install/
@@ -31,7 +59,11 @@ class WireGuardServerGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("WireGuard Server Setup - Windows 11")
-        self.root.geometry("800x600")
+        self.root.geometry("1200x800")  # Increased size to show all options
+        self.root.minsize(1000, 700)  # Set minimum size
+
+        # Center the window on screen
+        self.center_window()
 
         # Check if running as admin
         self.check_admin()
@@ -49,6 +81,14 @@ class WireGuardServerGUI:
         # Create UI
         self.create_widgets()
 
+        # Initialize server status after widgets are created
+        self.update_server_status("not_configured")
+
+        # Welcome message in terminal (now that widgets exist)
+        self.terminal_write("WireGuard Server Setup GUI - Ready", "green")
+        self.terminal_write(f"WireGuard Path: {self.wireguard_path}", "cyan")
+        self.terminal_write("Run 'Auto-Detect Network' to configure network settings", "yellow")
+
         # Auto-detect network settings after UI is ready
         self.root.after(1000, self.auto_detect_network)
 
@@ -63,6 +103,15 @@ class WireGuardServerGUI:
                                        "Please run as administrator.")
         except:
             pass
+
+    def center_window(self):
+        """Center the window on the screen"""
+        self.root.update_idletasks()
+        width = self.root.winfo_width()
+        height = self.root.winfo_height()
+        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.root.winfo_screenheight() // 2) - (height // 2)
+        self.root.geometry(f'{width}x{height}+{x}+{y}')
 
     def find_wireguard_installation(self):
         """Try to find WireGuard installation path"""
@@ -168,6 +217,9 @@ class WireGuardServerGUI:
         wg_exe = os.path.join(wg_path, "wg.exe")
         wireguard_exe = os.path.join(wg_path, "wireguard.exe")
 
+        self.terminal_write("Verifying WireGuard installation...", "cyan")
+        self.terminal_write(f"  Path: {wg_path}", "cyan")
+
         if os.path.exists(wg_exe) and os.path.exists(wireguard_exe):
             # Try to get version
             try:
@@ -175,13 +227,19 @@ class WireGuardServerGUI:
                 if result.returncode == 0:
                     version = result.stdout.strip()
                     self.log(f"WireGuard verified: {version}")
+                    self.terminal_write(f"  ✓ WireGuard found: {version}", "green")
+                    self.terminal_write(f"  ✓ wg.exe: {wg_exe}", "green")
+                    self.terminal_write(f"  ✓ wireguard.exe: {wireguard_exe}", "green")
                     messagebox.showinfo("Verification Successful",
                                         f"WireGuard found and working!\n{version}")
                     return True
             except Exception as e:
                 self.log(f"Error verifying WireGuard: {e}")
+                self.terminal_write(f"  ✗ Error: {e}", "red")
 
         self.log(f"WireGuard not found at: {wg_path}")
+        self.terminal_write(f"  ✗ WireGuard not found at: {wg_path}", "red")
+        self.terminal_write("  Please ensure WireGuard is installed correctly", "yellow")
         messagebox.showerror("Verification Failed",
                              f"WireGuard not found at:\n{wg_path}\n\n"
                              "Please ensure:\n"
@@ -342,8 +400,11 @@ class WireGuardServerGUI:
 
         self.update_status("Detecting network settings...")
         self.log("Starting network auto-detection...")
+        self.terminal_write("=" * 50, "cyan")
+        self.terminal_write("Starting network auto-detection...", "cyan")
 
         # Detect local IP
+        self.terminal_write("Detecting local IP address...", "cyan")
         local_ip = self.get_local_ip()
         if local_ip:
             self.local_ip_display.config(state="normal")
@@ -351,6 +412,7 @@ class WireGuardServerGUI:
             self.local_ip_display.insert(0, local_ip)
             self.local_ip_display.config(state="readonly")
             self.log(f"Local IP detected: {local_ip}")
+            self.terminal_write(f"  ✓ Local IP: {local_ip}", "green")
 
             # Suggest VPN subnet based on local network
             if local_ip.startswith("192.168."):
@@ -363,11 +425,14 @@ class WireGuardServerGUI:
             self.server_ip.delete(0, tk.END)
             self.server_ip.insert(0, suggested_vpn)
             self.log(f"Suggested VPN subnet: {suggested_vpn}")
+            self.terminal_write(f"  ✓ Suggested VPN subnet: {suggested_vpn}", "green")
         else:
             self.log("Could not detect local IP")
+            self.terminal_write("  ✗ Could not detect local IP", "red")
 
         # Detect public IP
         self.log("Detecting public IP (this may take a moment)...")
+        self.terminal_write("Detecting public IP address...", "cyan")
         public_ip = self.get_public_ip()
         if public_ip:
             self.public_ip_display.config(state="normal")
@@ -380,13 +445,17 @@ class WireGuardServerGUI:
             self.public_endpoint.insert(0, public_ip)
 
             self.log(f"Public IP detected: {public_ip}")
+            self.terminal_write(f"  ✓ Public IP: {public_ip}", "green")
             self.server_config['public_ip'] = public_ip
         else:
             self.log("Could not detect public IP - you may be offline or behind strict firewall")
+            self.terminal_write("  ✗ Could not detect public IP", "red")
+            self.terminal_write("    (You may be offline or behind strict firewall)", "yellow")
             self.public_endpoint.delete(0, tk.END)
             self.public_endpoint.insert(0, "MANUAL_ENTRY_REQUIRED")
 
         # Detect default gateway
+        self.terminal_write("Detecting default gateway...", "cyan")
         gateway = self.get_default_gateway()
         if gateway:
             self.gateway_display.config(state="normal")
@@ -394,24 +463,33 @@ class WireGuardServerGUI:
             self.gateway_display.insert(0, gateway)
             self.gateway_display.config(state="readonly")
             self.log(f"Default gateway detected: {gateway}")
+            self.terminal_write(f"  ✓ Gateway: {gateway}", "green")
         else:
             self.log("Could not detect default gateway")
+            self.terminal_write("  ✗ Could not detect default gateway", "red")
 
         # Detect DNS servers
+        self.terminal_write("Detecting DNS servers...", "cyan")
         dns_servers = self.get_active_dns_servers()
         self.dns_servers.delete(0, tk.END)
         self.dns_servers.insert(0, dns_servers)
         self.log(f"DNS servers detected: {dns_servers}")
+        self.terminal_write(f"  ✓ DNS: {dns_servers}", "green")
 
         # Detect available port (check if default 51820 is free)
+        self.terminal_write("Checking port availability...", "cyan")
         port = self.check_port_availability()
         if port != "51820":
             self.listen_port.delete(0, tk.END)
             self.listen_port.insert(0, port)
             self.log(f"Port {port} selected (51820 was in use)")
+            self.terminal_write(f"  ✓ Port {port} selected (51820 was in use)", "yellow")
         else:
             self.log(f"Default port 51820 is available")
+            self.terminal_write(f"  ✓ Port 51820 is available", "green")
 
+        self.terminal_write("=" * 50, "cyan")
+        self.terminal_write("Network auto-detection completed successfully", "green")
         self.update_status("Network detection complete")
         self.log("Network auto-detection completed successfully")
 
@@ -434,13 +512,25 @@ class WireGuardServerGUI:
         server_frame = ttk.Frame(notebook)
         notebook.add(server_frame, text="Server Setup")
 
-        # WireGuard Path Configuration
-        path_frame = ttk.LabelFrame(server_frame, text="WireGuard Installation", padding=10)
-        path_frame.pack(fill="x", padx=10, pady=10)
+        # Create main container with left and right sections
+        main_container = ttk.Frame(server_frame)
+        main_container.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Left side - Configuration
+        left_frame = ttk.Frame(main_container)
+        left_frame.pack(side="left", fill="both", expand=True, padx=(0, 10))
+
+        # Right side - Controls and Status
+        right_frame = ttk.Frame(main_container)
+        right_frame.pack(side="right", fill="y", padx=(0, 10))
+
+        # WireGuard Path Configuration (Left side)
+        path_frame = ttk.LabelFrame(left_frame, text="WireGuard Installation", padding=10)
+        path_frame.pack(fill="x", pady=(0, 10))
 
         ttk.Label(path_frame, text="WireGuard Path:").grid(row=0, column=0, sticky="w", pady=5)
         self.wg_path_var = tk.StringVar(value=self.wireguard_path)
-        self.wg_path_entry = ttk.Entry(path_frame, textvariable=self.wg_path_var, width=50)
+        self.wg_path_entry = ttk.Entry(path_frame, textvariable=self.wg_path_var, width=40)
         self.wg_path_entry.grid(row=0, column=1, pady=5, padx=5)
 
         self.browse_btn = ttk.Button(path_frame, text="Browse", command=self.browse_wireguard_path)
@@ -449,9 +539,9 @@ class WireGuardServerGUI:
         self.verify_btn = ttk.Button(path_frame, text="Verify Installation", command=self.verify_wireguard_installation)
         self.verify_btn.grid(row=1, column=1, pady=5)
 
-        # Server Configuration
-        config_frame = ttk.LabelFrame(server_frame, text="Server Configuration", padding=10)
-        config_frame.pack(fill="x", padx=10, pady=10)
+        # Server Configuration (Left side)
+        config_frame = ttk.LabelFrame(left_frame, text="Server Configuration", padding=10)
+        config_frame.pack(fill="x", pady=(0, 10))
 
         # Interface Name
         ttk.Label(config_frame, text="Interface Name:").grid(row=0, column=0, sticky="w", pady=5)
@@ -488,59 +578,110 @@ class WireGuardServerGUI:
         self.public_endpoint.insert(0, "Auto-detect required")
         self.public_endpoint.grid(row=5, column=1, pady=5)
 
-        # Auto-detect button
-        self.detect_btn = ttk.Button(config_frame, text="Auto-Detect Network Settings",
-                                     command=self.auto_detect_network)
-        self.detect_btn.grid(row=6, column=0, columnspan=2, pady=10)
-
-        # Generate Keys Button
-        self.gen_keys_btn = ttk.Button(config_frame, text="Generate Server Keys",
-                                       command=self.generate_server_keys)
-        self.gen_keys_btn.grid(row=7, column=0, columnspan=2, pady=10)
-
-        # Keys Display
-        keys_frame = ttk.LabelFrame(server_frame, text="Server Keys", padding=10)
-        keys_frame.pack(fill="x", padx=10, pady=10)
+        # Keys Display (Left side)
+        keys_frame = ttk.LabelFrame(left_frame, text="Server Keys", padding=10)
+        keys_frame.pack(fill="x", pady=(0, 10))
 
         ttk.Label(keys_frame, text="Private Key:").grid(row=0, column=0, sticky="w")
-        self.private_key_display = ttk.Entry(keys_frame, width=60, state="readonly")
+        self.private_key_display = ttk.Entry(keys_frame, width=50, state="readonly")
         self.private_key_display.grid(row=0, column=1, padx=5)
 
         ttk.Label(keys_frame, text="Public Key:").grid(row=1, column=0, sticky="w")
-        self.public_key_display = ttk.Entry(keys_frame, width=60, state="readonly")
+        self.public_key_display = ttk.Entry(keys_frame, width=50, state="readonly")
         self.public_key_display.grid(row=1, column=1, padx=5)
 
-        # Network Info Display
-        network_frame = ttk.LabelFrame(server_frame, text="Network Information", padding=10)
-        network_frame.pack(fill="x", padx=10, pady=10)
+        # Network Info Display (Left side)
+        network_frame = ttk.LabelFrame(left_frame, text="Detected Network Information", padding=10)
+        network_frame.pack(fill="x", pady=(0, 10))
 
-        ttk.Label(network_frame, text="Local IP:").grid(row=0, column=0, sticky="w")
-        self.local_ip_display = ttk.Entry(network_frame, width=30, state="readonly")
+        ttk.Label(network_frame, text="Local LAN IP:").grid(row=0, column=0, sticky="w")
+        self.local_ip_display = ttk.Entry(network_frame, width=20, state="readonly")
         self.local_ip_display.grid(row=0, column=1, padx=5)
+        local_help = ttk.Label(network_frame, text="Your computer's IP on local network",
+                               font=('TkDefaultFont', 8), foreground='gray')
+        local_help.grid(row=0, column=2, sticky="w", padx=5)
 
-        ttk.Label(network_frame, text="Public IP:").grid(row=1, column=0, sticky="w")
-        self.public_ip_display = ttk.Entry(network_frame, width=30, state="readonly")
+        ttk.Label(network_frame, text="Public Internet IP:").grid(row=1, column=0, sticky="w")
+        self.public_ip_display = ttk.Entry(network_frame, width=20, state="readonly")
         self.public_ip_display.grid(row=1, column=1, padx=5)
+        public_help = ttk.Label(network_frame, text="Your internet-facing IP (for clients)",
+                                font=('TkDefaultFont', 8), foreground='gray')
+        public_help.grid(row=1, column=2, sticky="w", padx=5)
 
         ttk.Label(network_frame, text="Default Gateway:").grid(row=2, column=0, sticky="w")
-        self.gateway_display = ttk.Entry(network_frame, width=30, state="readonly")
+        self.gateway_display = ttk.Entry(network_frame, width=20, state="readonly")
         self.gateway_display.grid(row=2, column=1, padx=5)
+        gateway_help = ttk.Label(network_frame, text="Your router's IP address",
+                                 font=('TkDefaultFont', 8), foreground='gray')
+        gateway_help.grid(row=2, column=2, sticky="w", padx=5)
 
-        # Action Buttons
-        action_frame = ttk.Frame(server_frame)
-        action_frame.pack(fill="x", padx=10, pady=10)
+        # Server Controls (Right side)
+        control_frame = ttk.LabelFrame(right_frame, text="Server Controls", padding=10)
+        control_frame.pack(fill="x", pady=(0, 10))
 
-        self.setup_btn = ttk.Button(action_frame, text="Setup WireGuard Server",
-                                    command=self.setup_server, state="disabled")
-        self.setup_btn.pack(side="left", padx=5)
+        self.gen_keys_btn = ttk.Button(control_frame, text="Generate Server Keys",
+                                       command=self.generate_server_keys, width=20)
+        self.gen_keys_btn.pack(pady=5)
 
-        self.start_btn = ttk.Button(action_frame, text="Start Server",
-                                    command=self.start_server, state="disabled")
-        self.start_btn.pack(side="left", padx=5)
+        self.detect_btn = ttk.Button(control_frame, text="Auto-Detect Network",
+                                     command=self.auto_detect_network, width=20)
+        self.detect_btn.pack(pady=5)
 
-        self.stop_btn = ttk.Button(action_frame, text="Stop Server",
-                                   command=self.stop_server, state="disabled")
-        self.stop_btn.pack(side="left", padx=5)
+        self.setup_btn = ttk.Button(control_frame, text="Setup WireGuard Server",
+                                    command=self.setup_server, state="disabled", width=20)
+        self.setup_btn.pack(pady=5)
+
+        self.start_btn = ttk.Button(control_frame, text="▶ Start Server",
+                                    command=self.start_server, state="disabled", width=20)
+        self.start_btn.pack(pady=5)
+
+        self.stop_btn = ttk.Button(control_frame, text="■ Stop Server",
+                                   command=self.stop_server, state="disabled", width=20)
+        self.stop_btn.pack(pady=5)
+
+        # Server Status (Right side)
+        status_frame = ttk.LabelFrame(right_frame, text="Server Status", padding=10)
+        status_frame.pack(fill="x", pady=(0, 10))
+
+        # Status indicator
+        self.status_indicator = ttk.Label(status_frame, text="⬤", font=("Arial", 20))
+        self.status_indicator.pack()
+
+        self.status_text = ttk.Label(status_frame, text="NOT CONFIGURED",
+                                     font=("Arial", 10, "bold"))
+        self.status_text.pack()
+
+        self.status_details = ttk.Label(status_frame, text="", font=("Arial", 8))
+        self.status_details.pack()
+
+        # Refresh status button
+        self.refresh_status_btn = ttk.Button(status_frame, text="↻ Refresh Status",
+                                             command=self.refresh_server_status, width=15)
+        self.refresh_status_btn.pack(pady=5)
+
+        # Terminal Output (Bottom)
+        terminal_frame = ttk.LabelFrame(server_frame, text="Terminal Output", padding=10)
+        terminal_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+        # Terminal output with black background
+        self.terminal_output = tk.Text(terminal_frame, height=8, width=80,
+                                       bg="black", fg="green",
+                                       font=("Consolas", 9),
+                                       insertbackground="green")
+        self.terminal_output.pack(fill="both", expand=True, side="left")
+
+        # Configure color tags for terminal
+        self.terminal_output.tag_config("green", foreground="#00ff00")
+        self.terminal_output.tag_config("red", foreground="#ff4444")
+        self.terminal_output.tag_config("yellow", foreground="#ffff00")
+        self.terminal_output.tag_config("cyan", foreground="#00ffff")
+        self.terminal_output.tag_config("white", foreground="#ffffff")
+        self.terminal_output.tag_config("orange", foreground="#ff9900")
+
+        # Scrollbar for terminal
+        terminal_scroll = ttk.Scrollbar(terminal_frame, command=self.terminal_output.yview)
+        terminal_scroll.pack(side="right", fill="y")
+        self.terminal_output.config(yscrollcommand=terminal_scroll.set)
 
         # Client Management Tab
         client_frame = ttk.Frame(notebook)
@@ -614,6 +755,24 @@ class WireGuardServerGUI:
             self.root.update()
         print(f"[LOG] {message}")  # Also print to console for debugging
 
+    def terminal_write(self, message, color="green"):
+        """Write directly to terminal output with optional color"""
+        try:
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            if hasattr(self, 'terminal_output'):
+                # Ensure the color tag exists
+                if color not in self.terminal_output.tag_names():
+                    self.terminal_output.tag_config(color, foreground=color)
+                self.terminal_output.insert(tk.END, f"[{timestamp}] {message}\n", color)
+                self.terminal_output.see(tk.END)
+                if hasattr(self, 'root'):
+                    self.root.update()
+            else:
+                # Fallback to console if terminal widget isn't ready yet
+                print(f"[{timestamp}] {message}")
+        except Exception as e:
+            print(f"[terminal_write error] {e}; msg={message}")
+
     def update_status(self, message):
         """Update status bar"""
         if hasattr(self, 'status_bar'):
@@ -621,24 +780,91 @@ class WireGuardServerGUI:
             self.root.update()
         print(f"[STATUS] {message}")  # Also print to console
 
+    def update_server_status(self, status="stopped", details=""):
+        """Update the server status indicator"""
+        if not hasattr(self, 'status_indicator'):
+            return
+
+        if status == "running":
+            self.status_indicator.config(text="⬤", foreground="green")
+            self.status_text.config(text="RUNNING", foreground="green")
+            self.status_details.config(text=details or f"Interface: {self.server_config.get('interface', 'wg_server')}")
+        elif status == "stopped":
+            self.status_indicator.config(text="⬤", foreground="red")
+            self.status_text.config(text="STOPPED", foreground="red")
+            self.status_details.config(text=details or "Server is not running")
+        elif status == "configured":
+            self.status_indicator.config(text="⬤", foreground="orange")
+            self.status_text.config(text="CONFIGURED", foreground="orange")
+            self.status_details.config(text=details or "Ready to start")
+        elif status == "error":
+            self.status_indicator.config(text="⬤", foreground="red")
+            self.status_text.config(text="ERROR", foreground="red")
+            self.status_details.config(text=details or "Check terminal output")
+        else:
+            self.status_indicator.config(text="⬤", foreground="gray")
+            self.status_text.config(text="NOT CONFIGURED", foreground="gray")
+            self.status_details.config(text=details or "Setup required")
+
+    def refresh_server_status(self):
+        """Refresh the server status by checking if WireGuard service is running"""
+        interface = self.server_config.get('interface')
+
+        if not interface:
+            self.update_server_status("not_configured", "No server configured")
+            self.terminal_write("No server configuration found", "yellow")
+            return
+
+        self.terminal_write(f"Checking status of interface {interface}...", "cyan")
+
+        # Check if the WireGuard service is running
+        wg_path = os.path.join(self.wg_path_var.get(), "wg.exe")
+        if os.path.exists(wg_path):
+            cmd = f'"{wg_path}" show {interface}'
+            success, output = self.run_command(cmd)
+
+            if success and output.strip():
+                # Parse output to get connection details
+                lines = output.strip().split('\n')
+                peer_count = len([l for l in lines if l.startswith('peer:')])
+                self.update_server_status("running", f"Active | {peer_count} peer(s) configured")
+                self.terminal_write(f"Server is running with {peer_count} configured peer(s)", "green")
+
+                # Show more details in terminal
+                for line in lines[:5]:  # Show first 5 lines of output
+                    if line.strip():
+                        self.terminal_write(f"  {line.strip()}", "cyan")
+            else:
+                self.update_server_status("stopped", "Service not active")
+                self.terminal_write("Server is not running", "yellow")
+        else:
+            self.update_server_status("error", "WireGuard not found")
+            self.terminal_write("Error: WireGuard executable not found", "red")
+
     def run_command(self, command, shell=True):
         """Run a system command and return output"""
         try:
             self.log(f"Running command: {command}")
+            self.terminal_write(f"$ {command}", "yellow")
             result = subprocess.run(command, shell=shell, capture_output=True, text=True)
             if result.returncode == 0:
+                if result.stdout.strip():
+                    self.terminal_write(f"  Output: {result.stdout[:100]}", "cyan")
                 return True, result.stdout
             else:
                 self.log(f"Command failed with error: {result.stderr}")
+                self.terminal_write(f"  Error: {result.stderr}", "red")
                 return False, result.stderr
         except Exception as e:
             self.log(f"Exception running command: {str(e)}")
+            self.terminal_write(f"  Exception: {str(e)}", "red")
             return False, str(e)
 
     def generate_server_keys(self):
         """Generate WireGuard server keys"""
         self.update_status("Generating server keys...")
         self.log("Starting server key generation...")
+        self.terminal_write("Generating WireGuard server keys...", "cyan")
 
         # Get the WireGuard path from the field
         wg_path = os.path.join(self.wg_path_var.get(), "wg.exe")
@@ -646,33 +872,42 @@ class WireGuardServerGUI:
             messagebox.showerror("Error",
                                  f"WireGuard not found at: {wg_path}\n"
                                  "Please set the correct path and verify installation.")
+            self.terminal_write(f"Error: wg.exe not found at {wg_path}", "red")
             return
 
         # Generate private key
         try:
+            self.terminal_write("  Generating private key...", "cyan")
             result = subprocess.run(f'"{wg_path}" genkey', capture_output=True, text=True, shell=True)
             if result.returncode != 0:
                 self.log(f"Error generating private key: {result.stderr}")
+                self.terminal_write(f"  ✗ Failed: {result.stderr}", "red")
                 messagebox.showerror("Error", f"Failed to generate private key: {result.stderr}")
                 return
             private_key = result.stdout.strip()
+            self.terminal_write("  ✓ Private key generated", "green")
         except Exception as e:
             self.log(f"Exception generating private key: {str(e)}")
+            self.terminal_write(f"  ✗ Exception: {str(e)}", "red")
             messagebox.showerror("Error", f"Failed to generate private key: {str(e)}")
             return
 
         # Generate public key from private key
         try:
+            self.terminal_write("  Generating public key...", "cyan")
             # Use echo with pipe to pass private key to wg pubkey
             cmd = f'echo {private_key} | "{wg_path}" pubkey'
             result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
             if result.returncode != 0:
                 self.log(f"Error generating public key: {result.stderr}")
+                self.terminal_write(f"  ✗ Failed: {result.stderr}", "red")
                 messagebox.showerror("Error", f"Failed to generate public key: {result.stderr}")
                 return
             public_key = result.stdout.strip()
+            self.terminal_write("  ✓ Public key generated", "green")
         except Exception as e:
             self.log(f"Exception generating public key: {str(e)}")
+            self.terminal_write(f"  ✗ Exception: {str(e)}", "red")
             messagebox.showerror("Error", f"Failed to generate public key: {str(e)}")
             return
 
@@ -693,15 +928,22 @@ class WireGuardServerGUI:
         self.log("Server keys generated successfully")
         self.log(f"Private key: {private_key[:20]}...")
         self.log(f"Public key: {public_key[:20]}...")
+
+        self.terminal_write("✓ Server keys generated successfully", "green")
+        self.terminal_write(f"  Private key: {private_key[:20]}...", "cyan")
+        self.terminal_write(f"  Public key: {public_key[:20]}...", "cyan")
+
         self.setup_btn.config(state="normal")
         self.update_status("Server keys generated")
 
     def setup_server(self):
         """Setup WireGuard server configuration"""
         self.update_status("Setting up WireGuard server...")
+        self.terminal_write("Starting server setup...", "cyan")
 
         # Verify WireGuard is available at the set path
         if not self.verify_wireguard_installation():
+            self.update_server_status("error", "WireGuard not installed")
             return
 
         # Get configuration values
@@ -712,6 +954,7 @@ class WireGuardServerGUI:
 
         if not private_key:
             messagebox.showerror("Error", "Please generate server keys first")
+            self.terminal_write("Error: Server keys not generated", "red")
             return
 
         # Create configuration directory (use WireGuard's Data directory if it exists)
@@ -750,14 +993,19 @@ ListenPort = {port}
             with open(config_file, 'w') as f:
                 f.write(config_content)
             self.log(f"Configuration saved to {config_file}")
+            self.terminal_write(f"✓ Configuration saved: {config_file}", "green")
         except Exception as e:
             self.log(f"Error saving configuration: {e}")
+            self.terminal_write(f"✗ Error saving configuration: {e}", "red")
+            self.update_server_status("error", "Failed to save config")
             return
 
         # Setup Windows firewall rules
+        self.terminal_write("Configuring Windows Firewall...", "cyan")
         self.setup_firewall_rules(port)
 
         # Enable IP forwarding
+        self.terminal_write("Enabling IP forwarding...", "cyan")
         self.enable_ip_forwarding()
 
         self.server_config['interface'] = interface
@@ -766,41 +1014,56 @@ ListenPort = {port}
         self.start_btn.config(state="normal")
         self.add_client_btn.config(state="normal")
         self.update_status("Server setup complete")
+        self.update_server_status("configured", "Ready to start")
+        self.terminal_write("✓ Server setup complete - Ready to start", "green")
 
     def setup_firewall_rules(self, port):
         """Configure Windows firewall rules for WireGuard"""
         self.log("Setting up firewall rules...")
+        self.terminal_write("Configuring Windows Firewall rules...", "cyan")
 
         # Add inbound rule
         cmd = f'netsh advfirewall firewall add rule name="WireGuard-In" dir=in action=allow protocol=UDP localport={port}'
         success, output = self.run_command(cmd)
         if success:
             self.log("Inbound firewall rule added")
+            self.terminal_write("  ✓ Inbound firewall rule added", "green")
         else:
             self.log(f"Warning: Could not add inbound rule: {output}")
+            self.terminal_write(f"  ⚠ Warning: Could not add inbound rule", "yellow")
 
         # Add outbound rule
         cmd = f'netsh advfirewall firewall add rule name="WireGuard-Out" dir=out action=allow protocol=UDP localport={port}'
         success, output = self.run_command(cmd)
         if success:
             self.log("Outbound firewall rule added")
+            self.terminal_write("  ✓ Outbound firewall rule added", "green")
         else:
             self.log(f"Warning: Could not add outbound rule: {output}")
+            self.terminal_write(f"  ⚠ Warning: Could not add outbound rule", "yellow")
 
     def enable_ip_forwarding(self):
         """Enable IP forwarding on Windows"""
         self.log("Enabling IP forwarding...")
+        self.terminal_write("Enabling IP forwarding...", "cyan")
 
         cmd = 'reg add HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters /v IPEnableRouter /t REG_DWORD /d 1 /f'
         success, output = self.run_command(cmd)
         if success:
             self.log("IP forwarding enabled")
+            self.terminal_write("  ✓ IP forwarding enabled in registry", "green")
         else:
             self.log(f"Warning: Could not enable IP forwarding: {output}")
+            self.terminal_write(f"  ⚠ Warning: Could not enable IP forwarding", "yellow")
 
         # Restart routing service
+        self.terminal_write("  Restarting routing service...", "cyan")
         cmd = 'sc stop RemoteAccess & sc start RemoteAccess'
-        self.run_command(cmd)
+        success, output = self.run_command(cmd)
+        if success:
+            self.terminal_write("  ✓ Routing service restarted", "green")
+        else:
+            self.terminal_write("  ⚠ Routing service may need manual restart", "yellow")
 
     def start_server(self):
         """Start WireGuard server"""
@@ -809,9 +1072,11 @@ ListenPort = {port}
 
         if not interface or not config_file:
             messagebox.showerror("Error", "Server not configured")
+            self.terminal_write("Error: Server not configured", "red")
             return
 
         self.update_status(f"Starting WireGuard server on {interface}...")
+        self.terminal_write(f"Starting WireGuard server on interface {interface}...", "cyan")
 
         # Get WireGuard.exe path
         wireguard_exe = os.path.join(self.wg_path_var.get(), "wireguard.exe")
@@ -819,6 +1084,8 @@ ListenPort = {port}
             messagebox.showerror("Error",
                                  f"wireguard.exe not found at: {wireguard_exe}\n"
                                  "Please set the correct path and verify installation.")
+            self.terminal_write(f"Error: wireguard.exe not found at {wireguard_exe}", "red")
+            self.update_server_status("error", "WireGuard not found")
             return
 
         # Install and start WireGuard tunnel
@@ -827,11 +1094,20 @@ ListenPort = {port}
 
         if success:
             self.log(f"WireGuard server started on interface {interface}")
+            self.terminal_write(f"✓ Server started successfully on {interface}", "green")
             self.stop_btn.config(state="normal")
             self.start_btn.config(state="disabled")
             self.update_status("Server running")
+            self.update_server_status("running", f"Interface: {interface}")
+
+            # Show additional info
+            self.terminal_write(f"  Port: {self.listen_port.get()}", "cyan")
+            self.terminal_write(f"  VPN Network: {self.server_ip.get()}", "cyan")
+            self.terminal_write(f"  Config: {config_file}", "cyan")
         else:
             self.log(f"Error starting server: {output}")
+            self.terminal_write(f"✗ Failed to start server: {output}", "red")
+            self.update_server_status("error", "Failed to start")
 
     def stop_server(self):
         """Stop WireGuard server"""
@@ -841,6 +1117,7 @@ ListenPort = {port}
             return
 
         self.update_status(f"Stopping WireGuard server on {interface}...")
+        self.terminal_write(f"Stopping WireGuard server on {interface}...", "cyan")
 
         # Get WireGuard.exe path
         wireguard_exe = os.path.join(self.wg_path_var.get(), "wireguard.exe")
@@ -848,6 +1125,7 @@ ListenPort = {port}
             messagebox.showerror("Error",
                                  f"wireguard.exe not found at: {wireguard_exe}\n"
                                  "Please set the correct path and verify installation.")
+            self.terminal_write(f"Error: wireguard.exe not found", "red")
             return
 
         cmd = f'"{wireguard_exe}" /uninstalltunnelservice {interface}'
@@ -855,11 +1133,15 @@ ListenPort = {port}
 
         if success:
             self.log(f"WireGuard server stopped")
+            self.terminal_write(f"✓ Server stopped successfully", "green")
             self.stop_btn.config(state="disabled")
             self.start_btn.config(state="normal")
             self.update_status("Server stopped")
+            self.update_server_status("stopped", "Service inactive")
         else:
             self.log(f"Error stopping server: {output}")
+            self.terminal_write(f"✗ Error stopping server: {output}", "red")
+            self.update_server_status("error", "Failed to stop")
 
     def generate_client_config(self):
         """Generate client configuration"""
